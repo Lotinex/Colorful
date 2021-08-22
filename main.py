@@ -807,7 +807,6 @@ class BossBar(Entity):
         })
     def setHp(self, hp):
         self.current = hp
-class Shop
 class Boss(Mob):
     def __init__(self, options):
         super().__init__(options)
@@ -848,11 +847,5 @@ class Turret(Rect):
             bullet.fire(self.target)
     def attack(self):
         self.interval = setInterval(self.attackSpeed, self.action)
-
-
-
-
-
-
 
 App.init('Colorless v1.0')
