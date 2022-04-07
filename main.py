@@ -1,3 +1,4 @@
+from cgitb import text
 import pygame as PG
 import sys, math, random, os
 import time, threading
@@ -65,7 +66,7 @@ class App:
     h = 720
     @staticmethod
     def init(title):
-        
+        PG.display.set_icon(PG.image.load('icon.png'))
         PG.display.set_caption(title)
         App.screen = PG.display.set_mode((App.w, App.h))
         App.clock = PG.time.Clock()
@@ -125,40 +126,14 @@ class Game:
             'bossTime': 20
         },
         {
-            'mobNumber': 50,
+            'mobNumber': 1000,
             'mobBaseHp': 1000,
             'mobIncreaseHp': 200,
 
-            'mobSpawnSpeed': 0.5,
-            'bossTime': 45
+            'mobSpawnSpeed': 0.05,
+            'bossTime': 450
         }
     ]
-    turrets = {
-        'red': {
-            'name': '빨강',
-            'atk': 500,
-            'attackSpeed': 1,
-            'color': (255, 0, 0)
-        },
-        'cyan': {
-            'name': '시안',
-            'atk': 150,
-            'attackSpeed': 0.3,
-            'color': (0, 168, 210)
-        },
-        'lime': {
-            'name': '라임',
-            'atk': 90,
-            'attackSpeed': 0.12,
-            'color': (191, 255, 0)
-        },
-        'crimson': {
-            'name': '진홍',
-            'atk': 1000,
-            'attackSpeed': 1.5,
-            'color': (220, 20, 60)
-        }
-    }
     map1 = [ 
         # 0: 빈자리 1: 길 2: 터렛설치장소 3: 엔드라인
         # 4: 오른쪽 5: 왼쪽 6: 위쪽 7: 아래쪽
@@ -229,6 +204,7 @@ class Text:
     models = {
         'default30': FontModel({'font': None, 'size': 30}),
         'default20': FontModel({'font': None, 'size': 20}),
+        'gothic13': FontModel({'font': 'malgungothic', 'size': 13}),
         'gothic15': FontModel({'font': 'malgungothic', 'size': 15}),
         'gothic20': FontModel({'font': 'malgungothic', 'size': 20}),
         'default45': FontModel({'font': None, 'size': 45}),
@@ -530,13 +506,18 @@ class Circle(Entity):
         self.type = 'circle'
         self.color = options['color']
         self.radius = options['radius']
+        self.alpha = 255
     def render(self): # override
+        surface = PG.Surface((self.radius, self.radius))
+        surface.set_alpha(self.alpha)
+        surface.fill(self.color)
         PG.draw.circle(
-            App.screen, 
+            surface, 
             self.color, 
             (self.x - Camera.x + App.w / 2, App.h - self.y - Camera.y - App.h / 2),
             self.radius
         )
+        App.screen.blit(surface, (self.x - Camera.x + App.w / 2, App.h - self.y - Camera.y - App.h / 2))
 class Bullet(Circle):
     bulletCounter = 0
     def __init__(self, options):
@@ -558,6 +539,7 @@ class Bullet(Circle):
             self.y += 0.8 / dist * ty
             if getDist() <= 5 or not(target.id in Renderer.entities) or abs(target.x - self.x) <= 5 or abs(target.y - self.y) <=5:
                 self.turret.target = Mob.getFirstMob()
+                self.turret.onHit(target)
                 interval.cancel()
                 target.onHit(self.turret.atk)
                 Renderer.kill(self.id)
@@ -585,6 +567,21 @@ class Rect(Entity):
             return True
     def onClick(self, pos): # override this
         print(1)
+    def setColor(self, options):
+        if hasattr(options, 'r'):
+            self.color = (options['r'], self.color[1], self.color[2])
+        if hasattr(options, 'g'):
+            self.color = (self.color[0], options['g'], self.color[2])
+        if hasattr(options, 'b'):
+            self.color = (self.color[0], self.color[1], options['b'])
+    def getRGB(self, type):
+        match type:
+            case 'r':
+                return self.color[0]
+            case 'g':
+                return self.color[1]
+            case 'b':
+                return self.color[2]
     def hover(self, pos): # override this
         pass
     def unHover(self): # override this
@@ -607,6 +604,13 @@ class Rect(Entity):
             ]
         )
         App.screen.blit(surface, (self.x - self.w / 2 - Camera.x + App.w / 2, App.h - self.y - self.h / 2 - Camera.y - App.h / 2))
+class HitCircle:
+    def __init__(self, options):
+        self.radius = options['radius']
+        self.x = options['x']
+        self.y = options['y']
+    def checkHit(self, target):
+        return (math.sqrt((target.x - self.x) ** 2 + (target.y - self.y) ** 2)) <= self.radius
 class DirectionTile(Rect):
     def __init__(self, options):
         super().__init__(options)
@@ -622,13 +626,24 @@ class TurretTile(Rect):
         self.hovered = True
         self.color = (200, 200, 200)
         if(self.turret is not None):
-            data =  Game.turrets[self.turret]
+            data =  self.turret
+            def renderDesc(descs):
+                texts = []
+                for desc in descs:
+                    texts.append(Text.models['gothic15'].process({'text': f"- {desc['title']}", 'color': 'purple'}))
+                    for text in desc['body']:
+                        texts.append(Text.models['gothic13'].process({'text': text, 'color': 'white'}))
+                return texts
+            Renderer.getFloatTooltip('turretTileTooltip').w = 280
+            Renderer.getFloatTooltip('turretTileTooltip').h = 170
             Renderer.getFloatTooltip('turretTileTooltip').texts = [
-                Text.models['gothic15'].process({'text': data['name'] + '색 색종이', 'color': data['color']}),
-                Text.models['gothic15'].process({'text': '공격력 ' + str(data['atk']), 'color': 'cyan'}),
-                Text.models['gothic15'].process({'text': '공격 속도 ' + str(data['attackSpeed']), 'color': 'cyan'})
-            ]
+                Text.models['gothic15'].process({'text': data.name, 'color': data.color}),
+                Text.models['gothic15'].process({'text': '공격력 ' + ("{:e}".format(data.atk) if data.atk > 1.0e5 else str(data.atk)), 'color': 'green'}),
+                Text.models['gothic15'].process({'text': '공격 속도 ' + str(data.attackSpeed), 'color': 'green'})
+            ] + renderDesc(data.descs)
         else:
+            Renderer.getFloatTooltip('turretTileTooltip').w = 200
+            Renderer.getFloatTooltip('turretTileTooltip').h = 100
             Renderer.getFloatTooltip('turretTileTooltip').texts = [
                 Text.models['gothic15'].process({'text': '빈 터렛 타일', 'color': 'red'}),
                 Text.models['gothic15'].process({'text': '클릭하여 터렛 추가', 'color': 'cyan'})
@@ -640,18 +655,20 @@ class TurretTile(Rect):
         Renderer.getFloatTooltip('turretTileTooltip').show = False
     def onClick(self, pos): # override
         if self.turret is None:
-            turretType = random.choice(list(Game.turrets.keys()))
-            self.turret = turretType
-            turret = Turret({
-                'id': f'turret-{turretType}-{TurretTile.turretCounter}',
-                'tile': self,
-                'color': Game.turrets[turretType]["color"],
-                'w': 50,
-                'h': 50,
-                'name': f'{Game.turrets[turretType]["name"]}색 색종이',
-                'atk': Game.turrets[turretType]["atk"],
-                'attackSpeed': Game.turrets[turretType]["attackSpeed"]
-            })
+            turretType = random.choice(Turret.turrets)
+
+            turretInitData = {'tile': self}
+            match turretType:
+                case 'cyan':
+                    turret = Cyan(turretInitData)
+                case 'crimson':
+                    turret = Crimson(turretInitData)
+                case 'coral':
+                    turret = Coral(turretInitData)
+                case 'blue':
+                    turret = Blue(turretInitData)
+
+            self.turret = turret
             Renderer.spawn(turret)
             turret.attack()
             TurretTile.turretCounter += 1
@@ -727,7 +744,7 @@ class Mob(Rect):
             x = self.x
             y = self.y
             # x >= tile['x'] and x <= tile['x'] + 50 and y >= tile['y'] - 50 and y <= tile['y'] 
-            if math.sqrt((tile['x'] - x) ** 2 + (tile['y'] - y) ** 2) <= self.moveSpeed:
+            if math.sqrt((tile['x'] - x) ** 2 + (tile['y'] - y) ** 2) <= 1:
                 self.moveDirection = tile['direction']
         _.iterate(Renderer.directionTiles, lambda tileData: checkDirectionTile(tileData))
 
@@ -822,19 +839,23 @@ class Boss(Mob):
         super().onHit(damage)
         Renderer.bossBar.current -= damage
 class Turret(Rect):
+    turrets = ['cyan', 'crimson', 'coral', 'blue']
+
     def __init__(self, options):
+        print(options['color'])
         super().__init__({
-            'id': options['id'],
+            'id': f'turret-{options["color"]}-{TurretTile.turretCounter}',
             'x': options['tile'].x,
             'y': options['tile'].y,
             'color': options['color'],
-            'w': options['w'],
-            'h': options['h']
+            'w': 50,
+            'h': 50
         })
         self.attackSpeed = options['attackSpeed']
         self.type = 'turret'
         self.atk = options['atk']
-        self.name = options['name']
+        self.name = options['name'] + '색 색종이'
+        self.descs = options['descs']
     def action(self, interval):
         if len(Renderer.mobs) != 0 and Mob.getFirstMob() != None:
             self.target = Mob.getFirstMob()
@@ -847,5 +868,121 @@ class Turret(Rect):
             bullet.fire(self.target)
     def attack(self):
         self.interval = setInterval(self.attackSpeed, self.action)
+    def onHit(self, target: Mob):
+        pass
 
-App.init('Colorless v1.0')
+
+class Cyan(Turret):
+    def __init__(self, options):
+        super().__init__({
+            'tile': options['tile'],
+            'name': '시안',
+            'atk': 1,
+            'attackSpeed': 0.7,
+            'color': (0, 255, 255),
+            'descs': [
+                {
+                    'title': "차가운 얼음서리",
+                    'body': ["피격당한 적을 낮은 확률로", "잠시동안 얼린다."]
+                }
+            ]
+        })
+    # override
+    def onHit(self, target: Mob):
+        target.setColor({
+            'b': 255
+        })
+        target.moveSpeed = 0
+
+        def unfreeze():
+            target.moveSpeed = 1
+            target.setColor({
+                'b': 125
+            })
+        timer = Timer(2, unfreeze)
+        timer.start()
+class Crimson(Turret):
+    def __init__(self, options):
+        super().__init__({
+            'tile': options['tile'],
+            'name': '진홍',
+            'atk': 10,
+            'attackSpeed': 0.5,
+            'color': 	(220, 20, 60),
+            'descs': [
+                {
+                    'title': "핏빛 무장",
+                    'body': ["일정 시간마다 일시적으로 공격 속도와", "공격력이 대폭 증가한다."]
+                }
+            ]
+        })
+        def unrage():
+            self.name = '진홍색 색종이'
+            self.attackSpeed = 0.5
+            self.interval.cancel()
+            self.attack()
+            self.atk = 10
+        def rage():
+            self.name = '진홍색 색종이 · 무장'
+            self.attackSpeed = 0.03
+            self.interval.cancel()
+            self.attack()
+            self.atk = 1000
+            timer = Timer(4, unrage)
+            timer.start()
+        setInterval(7, lambda _: rage())
+class Coral(Turret):
+    def __init__(self, options):
+        super().__init__({
+            'tile': options['tile'],
+            'name': '산호',
+            'atk': 100,
+            'attackSpeed': 1,
+            'color': 	(255, 127, 80),
+            'descs': [
+                {
+                    'title': "진주의 지혜",
+                    'body': ["일정 시간이 지날 때마다", "공격력이 100% 상승한다."]
+                }
+            ]
+        })
+        def upgrade():
+            self.atk *= 2
+        setInterval(7, lambda _: upgrade())
+class Blue(Turret):
+        def __init__(self, options):
+            super().__init__({
+                'tile': options['tile'],
+                'name': '파랑',
+                'atk': 55,
+                'attackSpeed': 0.75,
+                'color': 	(0, 50, 255),
+                'descs': [
+                    {
+                        'title': "심해의 물결",
+                        'body': ["피격당한 적 주위에 파도를 일으켜", "광역 피해를 준다."]
+                    }
+                ]
+            })
+        def onHit(self, target):
+            effect = Circle({
+                'color': (0, 75, 255),
+                'x': target.x,
+                'y': target.y,
+                'radius': 100,
+                'id': f'hitEffect-{self.id}'
+            })
+            effect.alpha = 180
+            Renderer.spawn(effect)
+            timer = Timer(1, lambda _: Renderer.kill(effect.id))
+            hitCircle = HitCircle({
+                'x': target.x,
+                'y': target.y,
+                'radius': 100
+            })
+            def checkHit(mob):
+                if hitCircle.checkHit(mob):
+                    mob.onHit(self.atk)
+            _.iterateDic(Renderer.mobs, lambda k, v: checkHit(v))
+
+App.init('Colorless 1.2')
