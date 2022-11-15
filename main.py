@@ -1,8 +1,6 @@
-from cgitb import text
 import pygame as PG
-import sys, math, random, os
+import math, random, os
 import time, threading
-import asyncio
 from threading import Timer
 PG.init()
 PG.mixer.init()
@@ -529,11 +527,6 @@ class Bullet(Circle):
         dist = math.sqrt(tx * tx + ty * ty)
         def getDist():
             return math.sqrt((target.x - self.x) ** 2 + (target.y - self.y) ** 2)
-        rad = math.atan2(ty, tx)
-
-        velX = (tx/dist) * 8
-        velY = (ty/dist) * 8
-
         def move(interval):
             self.x += 0.8 / dist * tx
             self.y += 0.8 / dist * ty
@@ -985,4 +978,4 @@ class Blue(Turret):
                     mob.onHit(self.atk)
             _.iterateDic(Renderer.mobs, lambda k, v: checkHit(v))
 
-App.init('Colorless 1.2')
+App.init('Colorful 1.2')
